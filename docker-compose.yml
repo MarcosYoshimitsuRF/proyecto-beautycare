@@ -34,48 +34,56 @@ services:
   # Servicio 3: API Core (Monolito)
   beautycare_api:
     build:
-      context: ./beautycare-api # Asume que el Dockerfile estará aquí
+      context: ./beautycare-api
       dockerfile: Dockerfile
     container_name: beautycare-dev-api
     depends_on:
-      - beautycare_db # Depende de la BD Core
+      - beautycare_db
     ports:
-      - "8080:8080" # Puerto de la API Core
+      - "8080:8080"
     environment:
+      # Propiedades de la Base de Datos
       SPRING_DATASOURCE_URL: jdbc:postgresql://beautycare_db:5432/beautycare_db
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admin
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate # Flyway se encargará de la migración
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      # --- NUEVAS PROPIEDADES JWT ---
+      # Spring Boot convierte 'app.jwt.secret' a 'APP_JWT_SECRET'
+      APP_JWT_SECRET: N2Y4YjY5MmE2ZDRkNmU2YjVmN2E3NTZiNzE0ZjdjNDEzOTgwZDIyYjZmY2Q0OWU4OTI5MjRhMzA2YmE5N2U5ZQ==
+      APP_JWT_EXPIRATION_MS: 3600000
     networks:
       - beautycare-net
 
   # Servicio 4: API Inventario (Microservicio)
   inventory_service:
     build:
-      context: ./inventory-service # Asume que el Dockerfile estará aquí
+      context: ./inventory-service
       dockerfile: Dockerfile
     container_name: beautycare-dev-inventory-service
     depends_on:
-      - inventory_db # Depende de la BD Inventario
+      - inventory_db
     ports:
-      - "8081:8081" # Puerto de la API Inventario
+      - "8081:8081"
     environment:
+      # Propiedades de la Base de Datos
       SPRING_DATASOURCE_URL: jdbc:postgresql://inventory_db:5432/inventory_db
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admin
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
-      SERVER_PORT: 8081 # Definimos el puerto del servidor
+      SERVER_PORT: 8081
+      # --- NUEVAS PROPIEDADES JWT ---
+      # Deben ser idénticas al servicio core
+      APP_JWT_SECRET: N2Y4YjY5MmE2ZDRkNmU2YjVmN2E3NTZiNzE0ZjdjNDEzOTgwZDIyYjZmY2Q0OWU4OTI5MjRhMzA2YmE5N2U5ZQ==
+      APP_JWT_EXPIRATION_MS: 3600000
     networks:
       - beautycare-net
 
 # Volúmenes para persistir datos de las BDs
-# Docker Compose antepondrá 'beautycare-dev_' a estos nombres
 volumes:
   beautycare-db-data:
   inventory-db-data:
 
 # Red para la comunicación interna entre contenedores
-# Docker Compose antepondrá 'beautycare-dev_' a este nombre
 networks:
   beautycare-net:
     driver: bridge
