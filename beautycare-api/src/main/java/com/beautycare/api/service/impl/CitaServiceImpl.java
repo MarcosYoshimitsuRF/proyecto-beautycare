@@ -14,9 +14,14 @@ import com.beautycare.api.repository.ClienteRepository;
 import com.beautycare.api.repository.ProfesionalRepository;
 import com.beautycare.api.repository.ServicioRepository;
 import com.beautycare.api.service.CitaService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier; // Necesario para WebClient Bean
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono; // Necesario para WebClient reactivo
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,18 +30,24 @@ import java.util.stream.Collectors;
 @Service
 public class CitaServiceImpl implements CitaService {
 
+    private static final Logger log = LoggerFactory.getLogger(CitaServiceImpl.class);
+
     @Autowired private CitaRepository citaRepository;
     @Autowired private ClienteRepository clienteRepository;
     @Autowired private ProfesionalRepository profesionalRepository;
     @Autowired private ServicioRepository servicioRepository;
 
-    // Constante para el estado inicial
+    // 1. Inyectar el WebClient configurado
+    @Autowired
+    @Qualifier("inventoryWebClient") // Especifica cuál Bean de WebClient usar
+    private WebClient webClient;
+
     private static final String ESTADO_PENDIENTE = "PENDIENTE";
+    private static final String ESTADO_REALIZADA = "REALIZADA"; // Constante para el estado clave
 
     @Override
     @Transactional
     public CitaResponseDTO createCita(CitaRequestDTO requestDTO) {
-        // 1. Buscar entidades relacionadas (Cliente, Profesional, Servicio)
         Cliente cliente = clienteRepository.findById(requestDTO.getClienteId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente no encontrado con ID: " + requestDTO.getClienteId()));
         Profesional profesional = profesionalRepository.findById(requestDTO.getProfesionalId())
@@ -44,29 +55,23 @@ public class CitaServiceImpl implements CitaService {
         Servicio servicio = servicioRepository.findById(requestDTO.getServicioId())
                 .orElseThrow(() -> new ResourceNotFoundException("Servicio no encontrado con ID: " + requestDTO.getServicioId()));
 
-        // 2. Calcular fechaHoraFin
         LocalDateTime inicio = requestDTO.getFechaHoraInicio();
         LocalDateTime fin = inicio.plusMinutes(servicio.getDuracionMin());
 
-        // 3. *** VALIDACIÓN CLAVE: Verificar solapamientos ***
         List<Cita> overlapping = citaRepository.findOverlappingCitas(inicio, fin, cliente.getId(), profesional.getId());
         if (!overlapping.isEmpty()) {
             throw new ValidationException("Conflicto de horario: Ya existe una cita para el cliente o profesional en ese intervalo.");
         }
 
-        // 4. Crear la nueva entidad Cita
         Cita nuevaCita = new Cita();
         nuevaCita.setCliente(cliente);
         nuevaCita.setProfesional(profesional);
         nuevaCita.setServicio(servicio);
         nuevaCita.setFechaHoraInicio(inicio);
         nuevaCita.setFechaHoraFin(fin);
-        nuevaCita.setEstado(ESTADO_PENDIENTE); // Estado inicial
+        nuevaCita.setEstado(ESTADO_PENDIENTE);
 
-        // 5. Guardar en la BD
         Cita citaGuardada = citaRepository.save(nuevaCita);
-
-        // 6. Mapear a DTO (Response) y devolver
         return new CitaResponseDTO(citaGuardada);
     }
 
@@ -91,30 +96,40 @@ public class CitaServiceImpl implements CitaService {
     public CitaResponseDTO updateEstadoCita(Long id, CitaUpdateEstadoDTO updateEstadoDTO) {
         // 1. Buscar la cita
         Cita citaExistente = findCitaByIdOrThrow(id);
+        String nuevoEstado = updateEstadoDTO.getNuevoEstado();
 
         // 2. Actualizar el estado
-        citaExistente.setEstado(updateEstadoDTO.getNuevoEstado());
+        citaExistente.setEstado(nuevoEstado);
 
-        // 3. Guardar cambios
+        // 3. Guardar cambios en la BD
         Cita citaActualizada = citaRepository.save(citaExistente);
 
-        // (NOTA: Aquí, en la Fase 5, añadiremos la lógica para llamar al
-        // microservicio de inventario si el nuevoEstado es "REALIZADA")
+        // 4. *** LLAMADA AL MICROSERVICIO (SI ES NECESARIO) ***
+        if (ESTADO_REALIZADA.equalsIgnoreCase(nuevoEstado)) {
+            Long servicioId = citaExistente.getServicio().getId();
+            log.info("Cita {} marcada como REALIZADA. Llamando a inventory-service para descontar stock del servicio ID: {}", id, servicioId);
 
-        // 4. Mapear a DTO (Response) y devolver
+            // Hacer la llamada POST al endpoint definido en el roadmap
+            webClient.post()
+                    .uri("/api/inventory/consumo/registrar-por-servicio/{servicioId}", servicioId) // Construye la URL completa
+                    .retrieve() // Ejecuta la petición
+                    .bodyToMono(Void.class) // Espera una respuesta vacía (o puedes mapear a otra clase si devuelve algo)
+                    .doOnError(error -> log.error("Error al llamar a inventory-service para descontar stock: {}", error.getMessage()))
+                    .doOnSuccess(response -> log.info("Llamada a inventory-service exitosa para servicio ID: {}", servicioId))
+                    .subscribe(); // Necesario para ejecutar la llamada reactiva (no bloqueante)
+        }
+
+        // 5. Mapear a DTO (Response) y devolver
         return new CitaResponseDTO(citaActualizada);
     }
 
     @Override
     @Transactional
     public void deleteCita(Long id) {
-        // 1. Verificar si existe
         Cita cita = findCitaByIdOrThrow(id);
-        // 2. Eliminar
         citaRepository.delete(cita);
     }
 
-    // --- Método de ayuda privado ---
     private Cita findCitaByIdOrThrow(Long id) {
         return citaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada con ID: " + id));
