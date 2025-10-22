@@ -3,7 +3,9 @@ package com.beautycare.api.service;
 import com.beautycare.api.controller.dto.CitaRequestDTO;
 import com.beautycare.api.controller.dto.CitaResponseDTO;
 import com.beautycare.api.controller.dto.CitaUpdateEstadoDTO;
+import com.beautycare.api.controller.dto.TopServicioDTO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -61,6 +63,14 @@ public interface CitaService {
      */
     void deleteCita(Long id);
 
-    // Podrían añadirse otros métodos como updateCitaCompleta si se necesita
-    // modificar cliente, profesional o fecha (con re-validación de solapamiento).
+    /**
+     * Obtiene un ranking de los servicios más realizados (basado en citas con estado 'REALIZADA')
+     * dentro de un rango de fechas especificado.
+     *
+     * @param desde Fecha y hora de inicio del rango (inclusivo).
+     * @param hasta Fecha y hora de fin del rango (exclusivo).
+     * @param limit El número máximo de servicios a devolver (ej. top 5).
+     * @return Una lista de TopServicioDTO ordenada por cantidad descendente.
+     */
+    List<TopServicioDTO> getTopServiciosPorFecha(LocalDateTime desde, LocalDateTime hasta, int limit);
 }

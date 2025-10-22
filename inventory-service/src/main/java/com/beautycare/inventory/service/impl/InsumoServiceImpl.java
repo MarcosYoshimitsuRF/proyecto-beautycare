@@ -3,10 +3,10 @@ package com.beautycare.inventory.service.impl;
 import com.beautycare.inventory.controller.dto.InsumoRequestDTO;
 import com.beautycare.inventory.controller.dto.InsumoResponseDTO;
 import com.beautycare.inventory.exception.ResourceNotFoundException;
-import com.beautycare.inventory.exception.ValidationException; // Importar la excepción
-import com.beautycare.inventory.model.ConsumoInsumo; // Importar ConsumoInsumo
+import com.beautycare.inventory.exception.ValidationException;
+import com.beautycare.inventory.model.ConsumoInsumo;
 import com.beautycare.inventory.model.Insumo;
-import com.beautycare.inventory.repository.ConsumoInsumoRepository; // Importar repo
+import com.beautycare.inventory.repository.ConsumoInsumoRepository;
 import com.beautycare.inventory.repository.InsumoRepository;
 import com.beautycare.inventory.service.InsumoService;
 import org.slf4j.Logger;
@@ -25,7 +25,7 @@ public class InsumoServiceImpl implements InsumoService {
     private static final Logger log = LoggerFactory.getLogger(InsumoServiceImpl.class);
 
     @Autowired private InsumoRepository insumoRepository;
-    @Autowired private ConsumoInsumoRepository consumoInsumoRepository; // <-- Inyectar nuevo repo
+    @Autowired private ConsumoInsumoRepository consumoInsumoRepository;
 
     // --- Métodos CRUD (sin cambios) ---
     @Override
@@ -75,51 +75,51 @@ public class InsumoServiceImpl implements InsumoService {
         insumoRepository.delete(insumo);
     }
 
-    // --- NUEVO MÉTODO ---
+    // --- Método de consumo (sin cambios) ---
     @Override
-    @Transactional // ¡Importante! Debe ser transaccional
+    @Transactional
     public void registrarConsumoPorServicio(Long servicioId) {
         log.info("Recibida solicitud para registrar consumo del servicio ID: {}", servicioId);
-
-        // 1. Buscar todos los consumos definidos para este servicio
-        List<ConsumoInsumo> consumos = consumoInsumoRepository.findByServicioId(servicioId); // <-- Necesitamos crear este método en el repo
+        List<ConsumoInsumo> consumos = consumoInsumoRepository.findByServicioId(servicioId);
 
         if (consumos.isEmpty()) {
             log.warn("No se encontraron consumos definidos para el servicio ID: {}. No se descontará stock.", servicioId);
-            return; // No hay nada que descontar
+            return;
         }
 
-        // 2. Iterar y descontar stock para cada insumo
         for (ConsumoInsumo consumo : consumos) {
-            Insumo insumo = findInsumoByIdOrThrow(consumo.getInsumo().getId()); // Reutilizamos el método de ayuda
+            Insumo insumo = findInsumoByIdOrThrow(consumo.getInsumo().getId());
             BigDecimal cantidadADescontar = consumo.getCantidadPorServicio();
             int stockActual = insumo.getStock();
-
             log.debug("Procesando consumo: Insumo ID: {}, Cantidad a descontar: {}, Stock actual: {}",
                     insumo.getId(), cantidadADescontar, stockActual);
+            int cantidadInt = cantidadADescontar.intValue();
 
-            // Convertimos la cantidad a descontar a int (asumiendo que el stock es entero)
-            // En un caso real, si 'cantidadPorServicio' puede ser decimal, 'stock' también debería serlo.
-            int cantidadInt = cantidadADescontar.intValue(); // Simplificación: asume cantidades enteras
-
-            // 3. Validar stock suficiente
             if (stockActual < cantidadInt) {
                 log.error("Stock insuficiente para el insumo ID: {}. Stock actual: {}, Cantidad requerida: {}",
                         insumo.getId(), stockActual, cantidadInt);
                 throw new ValidationException("Stock insuficiente para el insumo: " + insumo.getNombre() +
                         ". Stock actual: " + stockActual + ", requerido: " + cantidadInt);
             }
-
-            // 4. Descontar stock
             insumo.setStock(stockActual - cantidadInt);
-
-            // 5. Guardar el insumo actualizado
             insumoRepository.save(insumo);
             log.info("Stock actualizado para insumo ID: {}. Nuevo stock: {}", insumo.getId(), insumo.getStock());
         }
     }
 
-    // --- Método de ayuda privado (modificado para lanzar excepción correcta) ---
+    @Override
+    @Transactional(readOnly = true) // Es una consulta de solo lectura
+    public List<InsumoResponseDTO> getInsumosBajoStock() {
+        // 1. Llamar al método del repositorio
+        List<Insumo> insumosBajoStock = insumoRepository.findInsumosBajoStock();
+
+        // 2. Mapear la lista de Entidades a DTOs (Response)
+        return insumosBajoStock.stream()
+                .map(InsumoResponseDTO::new) // Usa el constructor del DTO
+                .collect(Collectors.toList());
+    }
+
+    // --- Método de ayuda privado (sin cambios) ---
     private Insumo findInsumoByIdOrThrow(Long id) {
         return insumoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Insumo no encontrado con ID: " + id));

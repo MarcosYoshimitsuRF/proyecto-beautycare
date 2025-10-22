@@ -3,6 +3,8 @@ package com.beautycare.api.service;
 import com.beautycare.api.controller.dto.PagoRequestDTO;
 import com.beautycare.api.controller.dto.PagoResponseDTO;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -57,4 +59,14 @@ public interface PagoService {
      * @throws com.beautycare.api.exception.ResourceNotFoundException Si no se encuentra.
      */
     void deletePago(Long id);
+
+    /**
+     * Calcula el total de ingresos (suma de montos de pagos)
+     * dentro de un rango de fechas especificado.
+     *
+     * @param desde Fecha y hora de inicio del rango (inclusivo).
+     * @param hasta Fecha y hora de fin del rango (exclusivo).
+     * @return El monto total de ingresos en ese período.
+     */
+    BigDecimal getTotalIngresosPorFecha(LocalDateTime desde, LocalDateTime hasta);
 }

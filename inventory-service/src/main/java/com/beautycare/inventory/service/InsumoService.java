@@ -17,5 +17,6 @@ public interface InsumoService {
     InsumoResponseDTO updateInsumo(Long id, InsumoRequestDTO requestDTO);
     void deleteInsumo(Long id);
 
-    void registrarConsumoPorServicio(Long servicioId); // <-- NUEVO MÉTODO
+    void registrarConsumoPorServicio(Long servicioId);
+    List<InsumoResponseDTO> getInsumosBajoStock();
 }
